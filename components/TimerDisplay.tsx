@@ -62,6 +62,7 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({ elapsedSeconds, conf
            }} 
       />
       
+      {/* Main Timer Text */}
       <div 
         style={{
           fontFamily: config.fontFamily,
@@ -69,15 +70,22 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({ elapsedSeconds, conf
           color: currentColor,
           opacity: opacity,
           transition: 'color 0.3s ease',
-          textShadow: '0 0 10px rgba(0,0,0,0.5)'
+          textShadow: '0 0 10px rgba(0,0,0,0.5)',
+          zIndex: 10
         }}
-        className="z-10 font-bold whitespace-nowrap select-none"
+        className="font-bold whitespace-nowrap select-none"
       >
         {displayText}
       </div>
 
-      <div className="absolute bottom-2 right-2 text-xs text-gray-500 font-mono">
-        FFGL PREVIEW
+      {/* Footer Info Bar */}
+      <div className="absolute bottom-0 left-0 w-full bg-black/60 backdrop-blur-sm border-t border-white/10 py-1 px-4 flex justify-between items-center z-20">
+        <span className="text-[10px] text-gray-400 font-mono tracking-wider uppercase">
+            Progressive Timer
+        </span>
+        <span className="text-[10px] text-indigo-400 font-bold font-mono tracking-widest">
+            v1.0 by Mizin
+        </span>
       </div>
     </div>
   );

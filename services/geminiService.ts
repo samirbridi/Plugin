@@ -28,11 +28,19 @@ const generateFFGLCode = async (config: TimerConfig): Promise<string> => {
     - 10s Remaining: ${config.color10s}
     - 5s Remaining: ${config.color5s}
   
+  **IMPORTANT REQUIREMENT:**
+  In the OpenGL rendering logic (ProcessOpenGL), you MUST draw a small footer bar at the bottom of the frame.
+  - Background: Semi-transparent black strip across the bottom (width 100%, height ~20px).
+  - Text Right Aligned: "v1.0 by Mizin" in a small font size.
+  - Text Left Aligned: "PROGRESSIVE TIMER".
+  This acts as a signature/watermark for the plugin.
+  
   Please provide a COMPLETE, single-file C++ class implementation (header and source combined or clearly separated) that implements 'CFFGLPlugin'. 
   Focus on the logic for:
   1. Calculating time based on delta time.
   2. Switching colors based on 'Limit - CurrentTime'.
   3. Blinking logic if the limit is reached (Blink: ${config.finalMessageBlink}).
+  4. Rendering the footer bar and text.
   
   Add comments explaining how to compile this as a DLL using Visual Studio.
   `;
