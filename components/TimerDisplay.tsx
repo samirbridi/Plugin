@@ -77,16 +77,6 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({ elapsedSeconds, conf
       >
         {displayText}
       </div>
-
-      {/* Footer Info Bar */}
-      <div className="absolute bottom-0 left-0 w-full bg-black/60 backdrop-blur-sm border-t border-white/10 py-1 px-4 flex justify-between items-center z-20">
-        <span className="text-[10px] text-gray-400 font-mono tracking-wider uppercase">
-            Progressive Timer
-        </span>
-        <span className="text-[10px] text-indigo-400 font-bold font-mono tracking-widest">
-            v1.0 by Mizin
-        </span>
-      </div>
     </div>
   );
 };

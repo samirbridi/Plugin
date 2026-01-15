@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TimerConfig, TimerStatus } from '../types';
 import { AVAILABLE_FONTS } from '../constants';
-import { Play, Pause, RotateCcw, Code, Search, RefreshCw } from 'lucide-react';
+import { Play, Pause, RotateCcw, Square, Code, Search, RefreshCw } from 'lucide-react';
 
 interface ControlPanelProps {
   config: TimerConfig;
@@ -9,6 +9,7 @@ interface ControlPanelProps {
   status: TimerStatus;
   onStart: () => void;
   onPause: () => void;
+  onStop: () => void;
   onReset: () => void;
   onGenerateCode: () => void;
   isGenerating: boolean;
@@ -20,6 +21,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   status,
   onStart,
   onPause,
+  onStop,
   onReset,
   onGenerateCode,
   isGenerating
@@ -29,7 +31,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [isLoadingFonts, setIsLoadingFonts] = useState(false);
 
   useEffect(() => {
-    // Check if the Local Font Access API is supported (Chrome/Edge/Opera)
     if ('queryLocalFonts' in window) {
       setCanLoadFonts(true);
     }
@@ -40,21 +41,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       setIsLoadingFonts(true);
       // @ts-ignore: experimental API
       const localFonts = await window.queryLocalFonts();
-      
-      // Extract family names
       const sysFontFamilies = localFonts.map((f: any) => f.family);
-      
-      // Merge with default fonts to ensure we have a complete list
-      // Use Set to remove duplicates
       const mergedFonts = Array.from(new Set([...AVAILABLE_FONTS, ...sysFontFamilies]));
-      
-      // Sort alphabetically for easier finding
       const sortedFonts = mergedFonts.sort((a, b) => a.localeCompare(b));
-      
       setAvailableFonts(sortedFonts);
     } catch (err) {
       console.error("Error loading fonts:", err);
-      alert("Could not load system fonts. Please ensure you grant permission when prompted by the browser.");
+      alert("Could not load system fonts.");
     } finally {
       setIsLoadingFonts(false);
     }
@@ -64,12 +57,33 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     setConfig(prev => ({ ...prev, [key]: value }));
   };
 
+  // Helper to calculate H/M/S from total seconds for the UI
+  const limitHours = Math.floor(config.limitSeconds / 3600);
+  const limitMinutes = Math.floor((config.limitSeconds % 3600) / 60);
+  const limitSeconds = config.limitSeconds % 60;
+
+  const handleTimeChange = (type: 'h' | 'm' | 's', val: number) => {
+    const safeVal = Math.max(0, val);
+    let newTotal = 0;
+    
+    if (type === 'h') {
+        newTotal = (safeVal * 3600) + (limitMinutes * 60) + limitSeconds;
+    } else if (type === 'm') {
+        newTotal = (limitHours * 3600) + (safeVal * 60) + limitSeconds;
+    } else {
+        newTotal = (limitHours * 3600) + (limitMinutes * 60) + safeVal;
+    }
+    
+    handleChange('limitSeconds', newTotal);
+  };
+
   return (
-    <div className="bg-gray-800 p-6 rounded-lg shadow-xl overflow-y-auto h-full text-sm">
+    <div className="bg-gray-800 p-6 rounded-lg shadow-xl overflow-y-auto h-full text-sm flex flex-col">
       <h2 className="text-xl font-bold text-white mb-6 border-b border-gray-700 pb-2">Plugin Configuration</h2>
 
       {/* Transport Controls */}
-      <div className="grid grid-cols-3 gap-2 mb-8">
+      <div className="grid grid-cols-2 gap-3 mb-8">
+        {/* Row 1: Start / Pause */}
         {status === TimerStatus.RUNNING ? (
           <button onClick={onPause} className="flex items-center justify-center gap-2 bg-yellow-600 hover:bg-yellow-500 text-white p-3 rounded font-bold transition">
             <Pause size={18} /> Pause
@@ -79,13 +93,20 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <Play size={18} /> Start
           </button>
         )}
-        <button onClick={onReset} className="col-span-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white p-3 rounded font-bold transition">
+
+        {/* Row 1: Reset (keeps state but zeroes time) */}
+        <button onClick={onReset} className="flex items-center justify-center gap-2 bg-gray-600 hover:bg-gray-500 text-white p-3 rounded font-bold transition">
           <RotateCcw size={18} /> Reset
+        </button>
+
+        {/* Row 2: Stop (Full width or separate?) Let's make it prominent */}
+        <button onClick={onStop} className="col-span-2 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white p-3 rounded font-bold transition">
+          <Square size={18} fill="currentColor" /> Stop
         </button>
       </div>
 
       {/* General Settings */}
-      <div className="space-y-6">
+      <div className="space-y-6 flex-1">
         
         {/* Font Config */}
         <section>
@@ -98,9 +119,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             value={config.fontFamily}
                             onChange={(e) => handleChange('fontFamily', e.target.value)}
                             className="flex-1 bg-gray-700 text-white border border-gray-600 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
-                            style={{ backgroundImage: 'none' }} // Remove default arrow to style cleaner if needed, or keep default
                         >
-                            {/* Ensure the current font is an option even if not in the list yet */}
                             {!availableFonts.includes(config.fontFamily) && (
                                 <option value={config.fontFamily}>{config.fontFamily}</option>
                             )}
@@ -108,22 +127,15 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                                 <option key={font} value={font}>{font}</option>
                             ))}
                         </select>
-                        
                         {canLoadFonts && (
                             <button 
                               onClick={handleLoadFonts}
                               disabled={isLoadingFonts}
                               className="px-3 bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white rounded flex items-center justify-center transition disabled:opacity-50"
-                              title="Scan/Refresh System Fonts"
                             >
                               {isLoadingFonts ? <RefreshCw className="animate-spin" size={16} /> : <Search size={16} />}
                             </button>
                         )}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {canLoadFonts 
-                        ? "Click the search icon to load all fonts installed on your computer." 
-                        : "Browser does not support scanning local fonts. Using standard list."}
                     </div>
                 </div>
                 <div>
@@ -154,14 +166,39 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             
             {config.limitEnabled && (
                 <div>
-                    <label className="block text-gray-400 mb-1">Limit (Seconds)</label>
-                    <input 
-                        type="number" 
-                        value={config.limitSeconds}
-                        onChange={(e) => handleChange('limitSeconds', Number(e.target.value))}
-                        className="w-full bg-gray-700 text-white border border-gray-600 rounded p-2 outline-none"
-                    />
-                    <div className="text-xs text-gray-500 mt-1">{(config.limitSeconds / 60).toFixed(1)} minutes</div>
+                    <label className="block text-gray-400 mb-2">Limit Duration</label>
+                    <div className="grid grid-cols-3 gap-2">
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Hours</span>
+                            <input 
+                                type="number" 
+                                min="0"
+                                value={limitHours}
+                                onChange={(e) => handleTimeChange('h', Number(e.target.value))}
+                                className="w-full bg-gray-700 text-white border border-gray-600 rounded p-2 outline-none text-center"
+                            />
+                        </div>
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Minutes</span>
+                            <input 
+                                type="number" 
+                                min="0"
+                                value={limitMinutes}
+                                onChange={(e) => handleTimeChange('m', Number(e.target.value))}
+                                className="w-full bg-gray-700 text-white border border-gray-600 rounded p-2 outline-none text-center"
+                            />
+                        </div>
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Seconds</span>
+                            <input 
+                                type="number" 
+                                min="0"
+                                value={limitSeconds}
+                                onChange={(e) => handleTimeChange('s', Number(e.target.value))}
+                                className="w-full bg-gray-700 text-white border border-gray-600 rounded p-2 outline-none text-center"
+                            />
+                        </div>
+                    </div>
                 </div>
             )}
         </section>
@@ -242,6 +279,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             Generates code for compilation into a .dll
         </p>
 
+      </div>
+
+      {/* Author Info Footer (Moved here) */}
+      <div className="mt-4 pt-4 border-t border-gray-700 text-center">
+        <div className="text-xs text-gray-500 uppercase tracking-widest font-mono">
+           Progressive Timer
+        </div>
+        <div className="text-sm text-indigo-400 font-bold font-mono">
+           v1.0 by Mizin
+        </div>
       </div>
     </div>
   );

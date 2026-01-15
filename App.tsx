@@ -33,23 +33,14 @@ const App: React.FC = () => {
     };
   }, [status]);
 
-  // Auto-stop logic if needed (optional based on preference, here we let it run until user resets or we handle "Progressive" meaning it just keeps counting up until display shows message)
-  useEffect(() => {
-    if (config.limitEnabled && status === TimerStatus.RUNNING) {
-      if (elapsedSeconds >= config.limitSeconds) {
-        // Technically "Progressive" might mean continue counting, but visual changes to message.
-        // If we want to STOP at limit:
-        // setStatus(TimerStatus.FINISHED);
-        // But for "Message", we usually keep it in a finished state but maybe running internally for blink?
-        // Let's keep it running so the blink interval in TimerDisplay works.
-      }
-    }
-  }, [elapsedSeconds, config.limitEnabled, config.limitSeconds, status]);
-
   const handleStart = () => setStatus(TimerStatus.RUNNING);
   const handlePause = () => setStatus(TimerStatus.PAUSED);
-  const handleReset = () => {
+  const handleStop = () => {
     setStatus(TimerStatus.IDLE);
+    setElapsedSeconds(0);
+  };
+  const handleReset = () => {
+    // If running, we keep running but from 0. If paused, we stay paused at 0.
     setElapsedSeconds(0);
   };
 
@@ -78,6 +69,7 @@ const App: React.FC = () => {
           status={status}
           onStart={handleStart}
           onPause={handlePause}
+          onStop={handleStop}
           onReset={handleReset}
           onGenerateCode={handleGenerate}
           isGenerating={isGenerating}
@@ -88,7 +80,7 @@ const App: React.FC = () => {
       <div className="flex-1 h-full flex flex-col p-6 bg-gray-950">
         <header className="mb-6 flex justify-between items-end">
             <div>
-                <h1 className="text-3xl font-bold text-white tracking-tight uppercase text-indigo-400">PROGRESSIVE TIMER by Mizin</h1>
+                <h1 className="text-3xl font-bold text-white tracking-tight uppercase text-indigo-400">Progressive Timer</h1>
                 <p className="text-gray-500 mt-1">Resolume Arena Plugin Designer</p>
             </div>
             <div className="text-right text-xs text-gray-600">

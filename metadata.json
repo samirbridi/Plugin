@@ -1,5 +1,5 @@
 {
-  "name": "PROGRESSIVE TIMER by Mizin",
+  "name": "Progressive Timer",
   "description": "A Progressive Timer Simulator and FFGL C++ Code Generator for Resolume Arena. Design your timer visually and export the C++ code for compilation.",
   "requestFramePermissions": []
 }
