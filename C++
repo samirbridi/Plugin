@@ -1,0 +1,398 @@
+```cpp
+#include <FFGL.h>
+#include <FFGLLib.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#include <stdio.h>
+#include <math.h>
+#include <string>
+#include <vector>
+#include <chrono>
+
+// Plugin Constants
+#define PLUGIN_ID "MZN1"
+#define PLUGIN_NAME "ProgressiveTimer"
+#define MAX_TIME_SECONDS 300.0f
+
+// Parameter Constants
+#define FFPARAM_PLAY  0
+#define FFPARAM_RESET 1
+
+class ProgressiveTimer : public CFFGLPlugin
+{
+public:
+	ProgressiveTimer();
+	virtual ~ProgressiveTimer() {}
+
+	// CFFGLPlugin Overrides
+	DWORD InitGL(const FFGLViewportStruct *vp) override;
+	DWORD ProcessOpenGL(ProcessOpenGLStruct *pGL) override;
+	DWORD DeInitGL() override;
+
+	char* GetParameterDisplay(DWORD dwIndex) override;
+	DWORD SetFloatParameter(DWORD dwIndex, float fValue) override;
+	float GetFloatParameter(DWORD dwIndex) override;
+
+	// Factory method
+	static DWORD __stdcall CreateInstance(CFreeFrameGLPlugin **ppOutInstance)
+	{
+		*ppOutInstance = new ProgressiveTimer();
+		if (*ppOutInstance != NULL) return FF_SUCCESS;
+		return FF_FAIL;
+	}
+
+private:
+	// Internal logic
+	float m_ParamPlay;
+	float m_ParamReset;
+	
+	float m_CurrentTimeSeconds;
+	std::chrono::time_point<std::chrono::high_resolution_clock> m_LastTime;
+	bool  m_IsPlaying;
+
+	// Graphics Helpers
+	void DrawSegment(float x1, float y1, float x2, float y2);
+	void DrawDigit(float x, float y, float w, float h, char c);
+	void DrawString(float x, float y, float size, const std::string& str);
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//  Plugin Implementation
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+ProgressiveTimer::ProgressiveTimer()
+	: CFFGLPlugin()
+{
+	// Input properties
+	SetMinInputs(0);
+	SetMaxInputs(0); // Source plugin (generator)
+
+	// Parameters
+	SetParamInfo(FFPARAM_PLAY, "Play", FF_TYPE_BOOLEAN, true);
+	m_ParamPlay = 1.0f; // Default ON
+
+	SetParamInfo(FFPARAM_RESET, "Reset", FF_TYPE_EVENT, false);
+	m_ParamReset = 0.0f;
+
+	// Internal State
+	m_CurrentTimeSeconds = 0.0f;
+	m_IsPlaying = true;
+}
+
+DWORD ProgressiveTimer::InitGL(const FFGLViewportStruct *vp)
+{
+	m_LastTime = std::chrono::high_resolution_clock::now();
+	return FF_SUCCESS;
+}
+
+DWORD ProgressiveTimer::DeInitGL()
+{
+	return FF_SUCCESS;
+}
+
+char* ProgressiveTimer::GetParameterDisplay(DWORD dwIndex)
+{
+	static char s_display[16];
+	if (dwIndex == FFPARAM_PLAY) {
+		sprintf(s_display, "%s", m_ParamPlay > 0.5f ? "Playing" : "Paused");
+		return s_display;
+	}
+	return CFFGLPlugin::GetParameterDisplay(dwIndex);
+}
+
+DWORD ProgressiveTimer::SetFloatParameter(DWORD dwIndex, float fValue)
+{
+	switch (dwIndex) {
+	case FFPARAM_PLAY:
+		m_ParamPlay = fValue;
+		m_IsPlaying = (fValue > 0.5f);
+		break;
+	case FFPARAM_RESET:
+		m_ParamReset = fValue;
+		if (fValue > 0.5f) {
+			m_CurrentTimeSeconds = 0.0f;
+		}
+		break;
+	default:
+		return FF_FAIL;
+	}
+	return FF_SUCCESS;
+}
+
+float ProgressiveTimer::GetFloatParameter(DWORD dwIndex)
+{
+	switch (dwIndex) {
+	case FFPARAM_PLAY: return m_ParamPlay;
+	case FFPARAM_RESET: return m_ParamReset;
+	default: return 0.0f;
+	}
+}
+
+DWORD ProgressiveTimer::ProcessOpenGL(ProcessOpenGLStruct *pGL)
+{
+	// 1. Time Calculation
+	auto now = std::chrono::high_resolution_clock::now();
+	std::chrono::duration<float> delta = now - m_LastTime;
+	m_LastTime = now;
+
+	if (m_IsPlaying) {
+		m_CurrentTimeSeconds += delta.count();
+		if (m_CurrentTimeSeconds > MAX_TIME_SECONDS) {
+			m_CurrentTimeSeconds = MAX_TIME_SECONDS;
+		}
+	}
+
+	// 2. Logic & Formatting
+	float remaining = MAX_TIME_SECONDS - m_CurrentTimeSeconds;
+	std::string displayStr;
+	
+	// Determine Color
+	float r = 1.0f, g = 1.0f, b = 1.0f; // Default White
+
+	if (remaining <= 0.0f) {
+		// TIME UP - Red
+		r = 1.0f; g = 0.0f; b = 0.0f; 
+		displayStr = "TIME UP";
+	} else {
+		// Calculate color based on remaining time
+		if (remaining < 5.0f) {
+			// Red
+			r = 1.0f; g = 0.0f; b = 0.0f;
+		} else if (remaining < 10.0f) {
+			// Yellow
+			r = 1.0f; g = 1.0f; b = 0.0f;
+		} else if (remaining < 15.0f) {
+			// Blue
+			r = 0.0f; g = 0.0f; b = 1.0f;
+		} else if (remaining < 30.0f) {
+			// Green
+			r = 0.0f; g = 1.0f; b = 0.0f;
+		}
+		
+		// Format MM:SS
+		int totalSeconds = (int)ceil(m_CurrentTimeSeconds);
+		int mm = totalSeconds / 60;
+		int ss = totalSeconds % 60;
+		char buffer[16];
+		sprintf(buffer, "%02d:%02d", mm, ss);
+		displayStr = buffer;
+	}
+
+	// 3. OpenGL Setup
+	glPushAttrib(GL_ALL_ATTRIB_BITS);
+	glDisable(GL_TEXTURE_2D);
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
+	glLoadIdentity();
+	// Simple Identity projection (NDC -1 to 1)
+	
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+	glLoadIdentity();
+
+	// 4. Drawing
+	glColor4f(r, g, b, 1.0f);
+	glLineWidth(4.0f); // Make text readable
+
+	// Center the text approx. 'DrawString' centers based on length
+	// We pass scale. 0.3 is decent for -1..1 coordinates
+	DrawString(0.0f, 0.0f, 0.3f, displayStr);
+
+	// 5. Cleanup
+	glPopMatrix(); // Modelview
+	glMatrixMode(GL_PROJECTION);
+	glPopMatrix(); // Projection
+	glPopAttrib();
+
+	return FF_SUCCESS;
+}
+
+// ---------------- Helper Drawing Functions ---------------- //
+
+void ProgressiveTimer::DrawSegment(float x1, float y1, float x2, float y2)
+{
+	glVertex2f(x1, y1);
+	glVertex2f(x2, y2);
+}
+
+// Draws a character centered at x,y with dimensions w,h
+// A minimal 16-segment-ish vector implementation
+void ProgressiveTimer::DrawDigit(float x, float y, float w, float h, char c)
+{
+	float top    = y + h;
+	float mid    = y;
+	float bot    = y - h;
+	float left   = x - w;
+	float right  = x + w;
+	float center = x;
+
+	glBegin(GL_LINES);
+
+	switch (c) {
+	case '0':
+		DrawSegment(left, top, right, top);   // Top
+		DrawSegment(right, top, right, bot);  // Right
+		DrawSegment(right, bot, left, bot);   // Bottom
+		DrawSegment(left, bot, left, top);    // Left
+		DrawSegment(right, top, left, bot);   // Slash (optional style)
+		break;
+	case '1':
+		DrawSegment(center, top, center, bot);
+		DrawSegment(left, top, center, top); // serif
+		DrawSegment(left, bot, right, bot); // base
+		break;
+	case '2':
+		DrawSegment(left, top, right, top);
+		DrawSegment(right, top, right, mid);
+		DrawSegment(right, mid, left, mid);
+		DrawSegment(left, mid, left, bot);
+		DrawSegment(left, bot, right, bot);
+		break;
+	case '3':
+		DrawSegment(left, top, right, top);
+		DrawSegment(right, top, right, bot);
+		DrawSegment(left, bot, right, bot);
+		DrawSegment(left, mid, right, mid);
+		break;
+	case '4':
+		DrawSegment(left, top, left, mid);
+		DrawSegment(left, mid, right, mid);
+		DrawSegment(right, top, right, bot);
+		break;
+	case '5':
+		DrawSegment(right, top, left, top);
+		DrawSegment(left, top, left, mid);
+		DrawSegment(left, mid, right, mid);
+		DrawSegment(right, mid, right, bot);
+		DrawSegment(right, bot, left, bot);
+		break;
+	case '6':
+		DrawSegment(right, top, left, top);
+		DrawSegment(left, top, left, bot);
+		DrawSegment(left, bot, right, bot);
+		DrawSegment(right, bot, right, mid);
+		DrawSegment(right, mid, left, mid);
+		break;
+	case '7':
+		DrawSegment(left, top, right, top);
+		DrawSegment(right, top, right, bot);
+		break;
+	case '8':
+		DrawSegment(left, top, right, top);
+		DrawSegment(left, mid, right, mid);
+		DrawSegment(left, bot, right, bot);
+		DrawSegment(left, top, left, bot);
+		DrawSegment(right, top, right, bot);
+		break;
+	case '9':
+		DrawSegment(left, bot, right, bot);
+		DrawSegment(right, bot, right, top);
+		DrawSegment(right, top, left, top);
+		DrawSegment(left, top, left, mid);
+		DrawSegment(left, mid, right, mid);
+		break;
+	case ':':
+		DrawSegment(center, mid + (h*0.2f), center, mid + (h*0.3f));
+		DrawSegment(center, mid - (h*0.2f), center, mid - (h*0.3f));
+		break;
+	// Letters
+	case 'T':
+		DrawSegment(left, top, right, top);
+		DrawSegment(center, top, center, bot);
+		break;
+	case 'I':
+		DrawSegment(left, top, right, top);
+		DrawSegment(center, top, center, bot);
+		DrawSegment(left, bot, right, bot);
+		break;
+	case 'M':
+		DrawSegment(left, bot, left, top);
+		DrawSegment(left, top, center, mid);
+		DrawSegment(center, mid, right, top);
+		DrawSegment(right, top, right, bot);
+		break;
+	case 'E':
+		DrawSegment(right, top, left, top);
+		DrawSegment(left, top, left, bot);
+		DrawSegment(left, bot, right, bot);
+		DrawSegment(left, mid, right, mid);
+		break;
+	case 'U':
+		DrawSegment(left, top, left, bot);
+		DrawSegment(left, bot, right, bot);
+		DrawSegment(right, bot, right, top);
+		break;
+	case 'P':
+		DrawSegment(left, bot, left, top);
+		DrawSegment(left, top, right, top);
+		DrawSegment(right, top, right, mid);
+		DrawSegment(right, mid, left, mid);
+		break;
+	case ' ':
+	default:
+		break;
+	}
+	glEnd();
+}
+
+void ProgressiveTimer::DrawString(float x, float y, float size, const std::string& str)
+{
+	// Calculate approximate width to center it
+	float charWidth = size * 0.5f; // Aspect ratio of chars
+	float charHeight = size;
+	float spacing = size * 0.7f; // Spacing between centers
+	
+	float totalWidth = (str.length() - 1) * spacing;
+	float startX = x - (totalWidth * 0.5f);
+
+	for (size_t i = 0; i < str.length(); i++)
+	{
+		DrawDigit(startX + (i * spacing), y, charWidth * 0.5f, charHeight * 0.5f, str[i]);
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//  DLL Exports
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef _WIN32
+BOOL APIENTRY DllMain(HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
+{
+	return TRUE;
+}
+#endif
+
+extern "C"
+{
+	// Main entry point
+	FF_EXPORT const void* __stdcall plugMain(DWORD functionCode, DWORD inputValue, DWORD instanceID)
+	{
+		switch (functionCode)
+		{
+		case FF_GETINFO:
+		{
+			static CFFGLPluginInfo pluginInfo(
+				ProgressiveTimer::CreateInstance,
+				PLUGIN_ID,
+				PLUGIN_NAME,
+				1, // Major
+				000, // Minor
+				1, // 1 = Source/Generator
+				"1.000",
+				"Progressive Timer with Color Alerts"
+			);
+			return &pluginInfo;
+		}
+		default:
+			return CFFGLPlugin::plugMain(functionCode, inputValue, instanceID);
+		}
+	}
+}
+```
